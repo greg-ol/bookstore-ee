@@ -6,6 +6,7 @@ import com.bookstore.go.bookstoreee.exception.DuplicatedBookException;
 import com.bookstore.go.bookstoreee.exception.InvalidBookDataException;
 import com.bookstore.go.bookstoreee.model.Book;
 import com.bookstore.go.bookstoreee.model.BookType;
+import jakarta.annotation.Nonnull;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
 import jakarta.persistence.EntityTransaction;
@@ -40,9 +41,8 @@ public class BookService {
     }
 
     public BookResponseDto add(BookRequestDto request) {
-
         validateRequest(request);
-        String barcode = request.barcode().trim();
+        String barcode = getBarcode(request);
         return inTransaction(em -> {
             if (findBook(em, barcode).isPresent()) {
                 throw new DuplicatedBookException(barcode);
@@ -67,8 +67,8 @@ public class BookService {
         validateRequest(request);
         return inTransaction(em -> {
             Book b = getBook(em, barcode);
-            if (request.name() != null) b.setName(request.name());
-            if (!request.author().isBlank()) b.setAuthor(request.author());
+            if (hasValue(request.name())) b.setName(request.name());
+            if (hasValue(request.author())) b.setAuthor(request.author());
             if (request.quantity() != null) b.setQuantity(request.quantity());
             if (request.price() != null) b.setPrice(request.price());
             if (request.releaseYear() != null) b.setReleaseYear(request.releaseYear());
@@ -82,17 +82,17 @@ public class BookService {
     public List<BookResponseDto> search(BookSearchCriteriaDto dto) {
         return inTransaction(em -> {
             CriteriaBuilder cb = em.getCriteriaBuilder();
-            CriteriaQuery<Book> quary = cb.createQuery(Book.class);
-            Root<Book> root = quary.from(Book.class);
+            CriteriaQuery<Book> query = cb.createQuery(Book.class);
+            Root<Book> root = query.from(Book.class);
             List<Predicate> predicates = new ArrayList<>();
-            if (!dto.barcode().isBlank()) {
+            if (hasValue(dto.barcode())) {
                 predicates.add(cb.equal(root.get("barcode"), dto.barcode()));
             }
-            if (!dto.name().isBlank()) {
-                predicates.add(cb.like(cb.lower(root.get("name")), dto.name()));
+            if (hasValue(dto.name())) {
+                predicates.add(cb.like(cb.lower(root.get("name")), contains(dto.name()), '\\'));
             }
-            if (!dto.author().isBlank()) {
-                predicates.add(cb.like(cb.lower(root.get("author")), dto.author()));
+            if (hasValue(dto.author())) {
+                predicates.add(cb.like(cb.lower(root.get("author")), contains(dto.author()), '\\'));
             }
             if (dto.quantity() != null) {
                 predicates.add(cb.equal(root.get("quantity"), dto.quantity()));
@@ -110,9 +110,9 @@ public class BookService {
                 predicates.add(cb.equal(root.get("scienceIdex"), dto.scienceIndex()));
             }
 
-            quary.select(root).where(predicates.toArray(new Predicate[0])).orderBy(cb.asc(root.get("barcode")));
+            query.select(root).where(predicates.toArray(new Predicate[0])).orderBy(cb.asc(root.get("barcode")));
 
-            return em.createQuery(quary).getResultList().stream().map(this::convertToResponse).toList();
+            return em.createQuery(query).getResultList().stream().map(this::convertToResponse).toList();
         });
     }
 
@@ -120,7 +120,7 @@ public class BookService {
         Set<String> requestBarcodes = new HashSet<>(barcodes);
 
         return inTransaction(em -> {
-            BigDecimal sum = BigDecimal.valueOf(0);
+            BigDecimal sum = BigDecimal.ZERO;
             for (String bc : requestBarcodes) {
                 Book b = getBook(em, bc);
                 BigDecimal price = this.helper.totalPrice(b);
@@ -183,6 +183,9 @@ public class BookService {
         });
     }
 
+    private boolean hasValue(String value) {
+        return value != null && !value.isBlank();
+    }
 
     private Book getBook(EntityManager em, String barcode) {
         return findBook(em, barcode).orElseThrow(() -> new BookNotFoundException("Not found book with barcode: " + barcode));
@@ -286,5 +289,15 @@ public class BookService {
     private Optional<Book> findBook(EntityManager em, String barcode) {
         return em.createQuery("select b from Book b where b.barcode = :barcode", Book.class)
                 .setParameter("barcode", barcode).getResultStream().findFirst();
+    }
+
+    private String contains(String s) {
+        String str = s.toLowerCase().replace("\\", "\\\\").replace("%", "\\%%").replace("-", "\\-");
+        return "%" + str + "%";
+    }
+
+    @Nonnull
+    private static String getBarcode(BookRequestDto request) {
+        return request.barcode().trim();
     }
 }
