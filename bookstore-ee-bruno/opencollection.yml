@@ -21,7 +21,7 @@ request:
     - name: port
       value: "9090"
     - name: api
-      value: bookstore-ee-1.0-SNAPSHOT/api/books
+      value: bookstore/api/books
 bundled: false
 extensions:
   bruno:
