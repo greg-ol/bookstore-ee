@@ -2,9 +2,12 @@ package com.bookstore.go.bookstoreee.service;
 
 import com.bookstore.go.bookstoreee.dto.BookRequestDto;
 import com.bookstore.go.bookstoreee.dto.BookResponseDto;
+import com.bookstore.go.bookstoreee.dto.BookSearchCriteriaDto;
 import com.bookstore.go.bookstoreee.dto.BookUpdateRequestDto;
 import com.bookstore.go.bookstoreee.exception.BookNotFoundException;
 import com.bookstore.go.bookstoreee.exception.DuplicatedBookException;
+import com.bookstore.go.bookstoreee.exception.InvalidBookDataException;
+import com.bookstore.go.bookstoreee.model.BookType;
 import jakarta.persistence.EntityManagerFactory;
 import jakarta.persistence.Persistence;
 import jakarta.validation.Validation;
@@ -15,6 +18,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -22,24 +26,24 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class BookServiceTest {
 
-    private static EntityManagerFactory factory;
+    private static EntityManagerFactory emf;
     private static BookService service;
 
     @BeforeAll
     static void beforeAll() {
-        factory = Persistence.createEntityManagerFactory("bookstorePU",
-                Map.of("jakarta.persistence.jdbc.url", "jdbc:h2:mem:servicetest;DB_CLOSE_DELAY=1"));
+        emf = Persistence.createEntityManagerFactory("bookstorePU",
+                Map.of("jakarta.persistence.jdbc.url", "jdbc:h2:mem:servicetest;DB_CLOSE_DELAY=-1"));
 
         Validator validator = Validation.byDefaultProvider().configure()
                 .messageInterpolator(new ParameterMessageInterpolator())
                 .buildValidatorFactory().getValidator();
 
-        service = new BookService(factory, validator, new BookPriceHelper());
+        service = new BookService(emf, validator, new BookPriceHelper());
     }
 
     @AfterAll
     static void close() {
-        factory.close();
+        emf.close();
     }
 
     @Test
@@ -65,6 +69,21 @@ class BookServiceTest {
     @Test
     void unknownBarcode() {
         assertThrows(BookNotFoundException.class, () -> service.get("unknown barcode"));
+    }
+
+    @Test
+    void searchBySubsetOfAttributes() {
+        BookResponseDto response = service.add(new BookRequestDto("Dune", "Frank Herbert", "T-5", 1, new BigDecimal("9.99"), BookType.STANDARD, null, null));
+        BookSearchCriteriaDto c = new BookSearchCriteriaDto(null, null, "Frank Herbert", null, null, null, null, null);
+        List<BookResponseDto> found = service.search(c);
+        assertEquals(1, found.size());
+    }
+
+    @Test
+    void importIsAllOrNothing() {
+        var bad = new BookRequestDto("I-2", "Bad", "Me", 1, new BigDecimal("1"), BookType.SCIENCE_JOURNAL, null, null);
+        assertThrows(InvalidBookDataException.class, () -> service.importBooks(List.of(getRequest("I-1", 1, "1.00"), bad)));
+        assertThrows(BookNotFoundException.class, () -> service.get("I-1"));
     }
 
 

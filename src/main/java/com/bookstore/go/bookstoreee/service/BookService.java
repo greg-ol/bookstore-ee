@@ -292,7 +292,7 @@ public class BookService {
     }
 
     private String contains(String s) {
-        String str = s.toLowerCase().replace("\\", "\\\\").replace("%", "\\%%").replace("-", "\\-");
+        String str = s.toLowerCase().replace("\\", "\\\\").replace("%", "\\%").replace("-", "\\-");
         return "%" + str + "%";
     }
 
